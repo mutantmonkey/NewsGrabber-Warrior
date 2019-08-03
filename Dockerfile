@@ -1,21 +1,9 @@
-FROM debian:stretch-slim
-
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-        python3 \
-        python3-pip \
-        python3-setuptools \
-        rsync \
-    && useradd -m -u 1000 grabber \
-    && pip3 install --no-cache-dir seesaw requests six warcio \
-                                   dnspython==1.15.0 youtube_dl wpull==1.2.3 \
-                                   html5lib==0.9999999 psutil tornado==4.5.3 \
-                                   youtube_dl
-
-USER grabber
-WORKDIR /home/grabber/
-
-COPY --chown=1000 . /home/grabber/
-RUN python3 -m compileall .
-
-CMD ["run-pipeline3", "pipeline.py", "--concurrent", "6", "--disable-web-server", "mutantmonkey"]
+FROM python:3.4
+ENV LC_ALL=C.UTF-8
+RUN apt update \
+ && apt install -y --no-install-recommends rsync liblua5.1-0 libluajit-5.1-2 git-core libssl-dev bzip2 zlib1g-dev \
+ && pip install --upgrade seesaw requests warcio dnspython==1.16.0 youtube_dl wpull==1.2.3 html5lib==0.9999999 psutil
+WORKDIR /grab
+COPY . /grab
+STOPSIGNAL SIGINT
+ENTRYPOINT ["run-pipeline3", "--disable-web-server", "pipeline.py"]

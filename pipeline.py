@@ -26,7 +26,7 @@ try:
 except ImportError:
     print('Please install or update the requests module.')
     sys.exit(1)
-    
+
 import seesaw
 from seesaw.config import realize, NumberConfigValue
 from seesaw.externalprocess import WgetDownload, ExternalProcess
@@ -55,10 +55,13 @@ WPULL_EXE = find_executable(
     re.compile(r"\b1\.2\.3\b"),
     [
         "./wpull",
+        "/usr/local/bin/wpull",
         os.path.expanduser("~/.local/share/wpull-1.2.3/wpull"),
         os.path.expanduser("~/.local/bin/wpull"),
+        "/usr/bin/wpull",
+        "/usr/local/lib/python3.7/site-packages/wpull",
         "./wpull_bootstrap",
-        "wpull",
+
     ]
 )
 YOUTUBE_DL_EXE = find_executable(
@@ -91,7 +94,7 @@ if not YOUTUBE_DL_EXE:
 #
 # Update this each time you make a non-cosmetic change.
 # It will be added to the WARC files and reported to the tracker.
-VERSION = "20190531.01"
+VERSION = "20190702.01"
 TRACKER_ID = 'newsgrabber'
 TRACKER_HOST = 'tracker.archiveteam.org'
 
@@ -168,24 +171,15 @@ class MoveFiles(SimpleTask):
         shutil.rmtree("%(item_dir)s" % item)
 
 
-class DeduplicateWarcExtProc(ExternalProcess):
-    def __init__(self, args):
-        ExternalProcess.__init__(
-            self, "DeduplicateWarcExtProc", args=args, accept_on_exit_code=[0], 
-            retry_on_exit_code=[2])
 
+class DeduplicateWarcExtProc(SimpleTask):
+    def __init__(self):
+        SimpleTask.__init__(self, "DeduplicateWarcExtProc")
 
-class DeduplicateWarcExtProcArgs(object):
-    def realize(self, item):
-        dedup_args = [
-            PYTHON3_EXE,
-            '-u', # no output buffering
-            'dedupe.py',
-            '%(item_dir)s/%(warc_file_base)s.warc.gz' % item,
-            '%(item_dir)s/%(warc_file_base)s-deduplicated.warc.gz' % item
-        ]
-        return realize(dedup_args, item)
-
+    def process(self, item):
+        sourcewarc = "%(item_dir)s/%(warc_file_base)s.warc.gz" % item
+        destwarc = "%(item_dir)s/%(warc_file_base)s-deduplicated.warc.gz" % item
+        call(["python", "-u", "dedupe.py", sourcewarc, destwarc])
 
 def get_hash(filename):
     with open(filename, 'rb') as in_file:
@@ -205,7 +199,6 @@ def stats_id_function(item):
     }
 
     return d
-
 
 class WgetArgs(object):
     def realize(self, item):
@@ -243,7 +236,8 @@ class WgetArgs(object):
             '--warc-header', 'operator: Archive Team',
             '--warc-header', 'newsgrabber-dld-script-version: ' + VERSION,
             '--warc-header', ItemInterpolation('ftp-item: %(item_name)s'),
-            '--reject-regex', r'(^https?://launcher\.spot\.im/spot/(www\.spot\.im/launcher/|launcher\.spot\.im/|modules/launcher/){3,}bundle\.js)|(https?://static\.xx\.fbcdn\.net/rsrc\.php/)'
+            '--reject-regex', r'(^https?://launcher\.spot\.im/spot/(www\.spot\.im/launcher/|launcher\.spot\.im/|modules/launcher/){3,}bundle\.js)|(https?://static\.xx\.fbcdn\.net/rsrc\.php/)',
+            '--proxy-server-address', '127.0.0.1'
         ]
 
         if '-videos' in item_value:
@@ -296,9 +290,7 @@ pipeline = Pipeline(
         NumberConfigValue(min=1, max=20, default="1",
             name="shared:dedupe_threads", title="Deduplicate threads",
             description="The maximum number of concurrent dedupes."),
-        DeduplicateWarcExtProc(
-            DeduplicateWarcExtProcArgs()
-        )
+        DeduplicateWarcExtProc(),
     ),
     PrepareStatsForTracker(
         defaults={"downloader": downloader, "version": VERSION},
